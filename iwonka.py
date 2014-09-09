@@ -11,10 +11,16 @@ PATH_DESC_STR = u"Scieżka do plików"
 
 class FilePacker(object):
 
-    def __init__(self, dir_path=None):
+    def __init__(self, dir_path=None, output_dir=None):
         self.dir_path = dir_path or os.getcwd()
-        #TODO
-        self.output_dir = None
+        self.output_dir = output_dir or os.path.join(os.getcwd(), 'output')
+        #FIXME po pierwszych testach produkcyjnych ;)
+        self.output_mode = True
+        self.not_allowed_ext = ['.zip', ]
+        self.archive_format = 'zip'
+        self.archive_map = {
+            'zip': self.create_zip_archive
+        }
 
     def _extract_filename_pattern(self, filename):
         """
@@ -48,7 +54,7 @@ class FilePacker(object):
 
             for filename in files:
 
-                if '.zip' in filename:
+                if any((ext in filename) for ext in self.not_allowed_ext):
                     continue
 
                 pattern = self._extract_filename_pattern(filename)
@@ -61,31 +67,44 @@ class FilePacker(object):
 
         return dir_map
 
-    def create_zip_archive(self, archive_path, file_path, include_files):
-        print '* Creating zip archive - %s' % archive_path
+    def create_zip_archive(self, archive_name, dest_path, source_path, file_names):
+        archive_name = '%s.zip' % archive_name
+        archive_path = os.path.join(dest_path, archive_name)
 
-        with zipfile.ZipFile(archive_path, 'w') as myzip:
-            [myzip.write(os.path.join(file_path, include_file), include_file)
-             for include_file in include_files]
+        if not os.path.exists(dest_path):
+            os.makedirs(dest_path)
 
-        return myzip.filename
+        if not os.path.exists(archive_path):
+            print '* Creating zip archive - %s' % archive_name
 
-    def create_zip_archives(self):
+            with zipfile.ZipFile(archive_path, 'w') as myzip:
+                [myzip.write(os.path.join(source_path, include_file), include_file)
+                 for include_file in file_names]
+
+            return myzip.filename
+        else:
+            print '* Archive already exists - %s' % archive_name
+
+    def create_archives(self):
         created_files = []
 
         for dir_path, patterns in self._create_files_map().iteritems():
             for pattern, files in patterns.iteritems():
-                archive_name = os.path.join(dir_path, '%s.zip' % pattern)
 
-                if not os.path.exists(archive_name):
-                    created_files.append(self.create_zip_archive(archive_name, dir_path, files))
+                if self.output_mode:
+                    dest_path = dir_path.replace(self.dir_path, self.output_dir)
                 else:
-                    print '* Archive already exists - %s' % archive_name
+                    dest_path = dir_path
 
-        return created_files
+                created_files.append(self.create_zip_archive(pattern, dest_path, dir_path, files))
+
+        return [created for created in created_files if created is not None]
 
     def run(self):
-        return self.create_zip_archives()
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
+
+        return self.create_archives()
 
 
 if __name__ == "__main__":
